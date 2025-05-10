@@ -1,0 +1,20 @@
+# Tinyproxy configuration
+User nobody
+Group nogroup
+Listen 0.0.0.0
+Port ${PROXY_PORT}
+
+# Logging
+LogLevel Info
+LogFile "/var/log/tinyproxy/tinyproxy.log"
+PidFile "/var/run/tinyproxy/tinyproxy.pid"
+
+# Connection limits
+MaxClients 100
+
+# Timeouts (in seconds)
+Timeout 600
+
+# Allow all clients
+Allow 0.0.0.0/0
+ViaProxyName "VPN-Proxy"
