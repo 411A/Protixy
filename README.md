@@ -31,6 +31,8 @@ chmod +x generate-compose.sh && ./generate-compose.sh 1 && sudo docker compose u
 
 > 📝 **Note:** If you want multiple proxies (e.g., 3), change `1` to `3`. Proxies will start on ports `6101`, `6102`, `6103`, etc.
 
+> ⚠️ ProtonVPN's Free plan allows only 1 connection.
+
 4. Check the OpenVPN connection and proxy status by viewing container logs:
 
 ```bash
@@ -43,8 +45,12 @@ docker compose logs -f vpn_proxy_1
 
 ### 🔹 With `curl` (requires `jq`):
 
+📝 Make sure the `jq` is installed.
 ```bash
 sudo apt install jq -y
+```
+
+```bash
 curl -s --proxy http://127.0.0.1:6101 https://ipinfo.io/json | jq -r '"IP: \(.ip) 🔸 City: \(.city) 🔸 Region: \(.region) 🔸 Country: \(.country) 🔸 TimeZone: \(.timezone)"'
 ```
 
