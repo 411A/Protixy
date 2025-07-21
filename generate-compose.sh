@@ -13,7 +13,7 @@ cat > docker-compose.yml <<EOF
 services:
 EOF
 
-for i in $(seq 1 $COUNT); do
+for i in $(seq 1 "$COUNT"); do
   port=$((BASE_PORT + i))
   cat >> docker-compose.yml <<EOF
   vpn_proxy_${i}:
