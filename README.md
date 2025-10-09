@@ -1,3 +1,5 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/411A/Protixy)
+
 # 🐳 OpenVPN Proxy Setup Guide (Docker + ProtonVPN + Tinyproxy)
 
 ## 0. Prerequisites
