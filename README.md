@@ -99,7 +99,50 @@ docker compose logs -f vpn_proxy_1
 
 ---
 
+## 🌐 Using VPN Proxies from Other Docker Containers
+
+**Note:** The proxy is always accessible from the host at `http://127.0.0.1:6101`. The Docker network is an **optional** feature for container-to-container communication.
+
+The proxies are on a Docker network called `vpn_proxy_network`. Other containers can connect to use them by service name instead of localhost.
+
+### Connect Existing Container
+
+```bash
+docker network connect vpn_proxy_network your_container
+# Then use: http://vpn_proxy_1:6101 as proxy
+```
+
+### Use in Docker Compose
+
+```yaml
+services:
+  your_app:
+    image: your-app:latest
+    networks:
+      - vpn_proxy_network
+    environment:
+      - HTTP_PROXY=http://vpn_proxy_1:6101
+      - HTTPS_PROXY=http://vpn_proxy_1:6101
+
+networks:
+  vpn_proxy_network:
+    external: true
+```
+
+### Network Container Mode (transparent routing)
+
+```bash
+docker run --net=container:vpn_proxy_1 your-image
+# All traffic automatically goes through VPN
+```
+
+---
+
 ## ✅ Test Your Proxy
+
+### From Host Machine (or any external application)
+
+The proxy is accessible at `http://127.0.0.1:6101` - no Docker network needed!
 
 ### 🔹 With `curl` (requires `jq`):
 
@@ -122,22 +165,11 @@ python3 -c "import requests; info = requests.get('https://ipinfo.io/json', proxi
 
 ## 🛠️ Troubleshooting
 
-### Quick Diagnostic Tool
-
-Run the diagnostic script for a comprehensive health report:
+### Quick Diagnostic
 
 ```bash
 chmod +x diagnose.sh && ./diagnose.sh
 ```
-
-This will show:
-- Container status
-- Health check results  
-- Process status (OpenVPN & Tinyproxy)
-- Network interface details
-- Current VPN server
-- Proxy functionality test
-- Recent errors
 
 ### Container keeps restarting?
 This is normal during initial connection attempts. The container will:

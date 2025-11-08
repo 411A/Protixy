@@ -11,6 +11,19 @@ if [ ! -f "docker-compose.yml" ]; then
     exit 1
 fi
 
+# Check network
+echo "🌐 Docker Network Status:"
+if docker network inspect vpn_proxy_network >/dev/null 2>&1; then
+    echo "   ✅ vpn_proxy_network exists"
+    connected_containers=$(docker network inspect vpn_proxy_network --format='{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null)
+    if [ -n "$connected_containers" ]; then
+        echo "   📡 Connected containers: $connected_containers"
+    fi
+else
+    echo "   ⚠️  vpn_proxy_network not found (will be created on first run)"
+fi
+echo ""
+
 # Get list of proxy containers
 containers=$(docker compose ps --services 2>/dev/null | grep vpn_proxy)
 
@@ -29,8 +42,9 @@ for container in $containers; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     # Check if container is running
-    if ! docker compose ps | grep -q "$container.*running"; then
-        echo "❌ Container is not running"
+    container_status=$(docker compose ps --format json | grep "$container" | grep -o '"State":"[^"]*"' | cut -d'"' -f4)
+    if [ "$container_status" != "running" ]; then
+        echo "❌ Container is not running (status: $container_status)"
         echo ""
         continue
     fi
@@ -107,5 +121,4 @@ echo "💡 Quick Actions:"
 echo "   Restart all:     docker compose restart"
 echo "   View logs:       docker compose logs -f"
 echo "   Rebuild:         docker compose up -d --build"
-echo "   Force new VPN:   docker compose restart"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

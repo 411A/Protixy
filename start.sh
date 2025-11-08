@@ -81,13 +81,17 @@ EOF
 function monitor_vpn_health {
     local consecutive_failures=0
     
+    # Give VPN time to fully establish routing before first check
+    echo "[monitor] ⏳ Waiting 30 seconds for VPN to fully stabilize..." >&2
+    sleep 30
+    
     while true; do
         sleep "$HEALTH_CHECK_INTERVAL"
         
         # Check if tun0 exists and has an IP
         if ! ip link show tun0 &>/dev/null || ! ip addr show tun0 | grep -q "inet "; then
             consecutive_failures=$((consecutive_failures + 1))
-            echo "[monitor] ⚠️  VPN connection issue detected (failure $consecutive_failures/$MAX_FAILURES)" >&2
+            echo "[monitor] ⚠️  VPN interface issue detected (failure $consecutive_failures/$MAX_FAILURES)" >&2
             
             if [ "$consecutive_failures" -ge "$MAX_FAILURES" ]; then
                 echo "[monitor] 🔄 Max failures reached. Triggering restart..." >&2
@@ -95,20 +99,31 @@ function monitor_vpn_health {
                 return 1
             fi
         else
-            # Try to actually reach the internet
-            if curl -s --max-time 10 https://ipinfo.io/ip >/dev/null 2>&1; then
-                if [ "$consecutive_failures" -gt 0 ]; then
-                    echo "[monitor] ✅ Connection recovered" >&2
-                fi
-                consecutive_failures=0
-            else
+            # Check if OpenVPN process is still running
+            if ! pgrep -x openvpn >/dev/null; then
                 consecutive_failures=$((consecutive_failures + 1))
-                echo "[monitor] ⚠️  Cannot reach internet (failure $consecutive_failures/$MAX_FAILURES)" >&2
+                echo "[monitor] ⚠️  OpenVPN process died (failure $consecutive_failures/$MAX_FAILURES)" >&2
                 
                 if [ "$consecutive_failures" -ge "$MAX_FAILURES" ]; then
                     echo "[monitor] 🔄 Max failures reached. Triggering restart..." >&2
-                    killall openvpn 2>/dev/null || true
                     return 1
+                fi
+            else
+                # Test proxy functionality through localhost
+                if curl -s --max-time 10 --proxy "http://127.0.0.1:${PROXY_PORT}" https://ipinfo.io/ip >/dev/null 2>&1; then
+                    if [ "$consecutive_failures" -gt 0 ]; then
+                        echo "[monitor] ✅ Connection recovered" >&2
+                    fi
+                    consecutive_failures=0
+                else
+                    consecutive_failures=$((consecutive_failures + 1))
+                    echo "[monitor] ⚠️  Proxy not responding (failure $consecutive_failures/$MAX_FAILURES)" >&2
+                    
+                    if [ "$consecutive_failures" -ge "$MAX_FAILURES" ]; then
+                        echo "[monitor] 🔄 Max failures reached. Triggering restart..." >&2
+                        killall openvpn 2>/dev/null || true
+                        return 1
+                    fi
                 fi
             fi
         fi
@@ -125,7 +140,7 @@ chmod 755 /var/log/tinyproxy /var/run/tinyproxy
 
 # Configure and start Tinyproxy in the background
 echo "[proxy] ✍️  Generating tinyproxy.conf for port $PROXY_PORT" >&2
-envsubst "$PROXY_PORT" < "$TINYPROXY_CONF_TEMPLATE" > "$TINYPROXY_CONF"
+envsubst < "$TINYPROXY_CONF_TEMPLATE" > "$TINYPROXY_CONF"
 echo "[proxy] 🚀 Starting Tinyproxy in the background." >&2
 tinyproxy -c "$TINYPROXY_CONF"
 

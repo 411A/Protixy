@@ -28,9 +28,11 @@ for i in $(seq 1 "$COUNT"); do
       - PROXY_PORT=${port}
     ports:
       - "${port}:${port}"
+    networks:
+      - vpn_proxy_network
     restart: unless-stopped
     healthcheck:
-      test: ["/bin/bash", "/usr/local/bin/healthcheck.sh"]
+      test: ["CMD", "/bin/bash", "/usr/local/bin/healthcheck.sh"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -39,4 +41,12 @@ for i in $(seq 1 "$COUNT"); do
 EOF
 done
 
+cat >> docker-compose.yml <<EOF
+networks:
+  vpn_proxy_network:
+    name: vpn_proxy_network
+    driver: bridge
+EOF
+
 echo "✅ Generated docker-compose.yml for ${COUNT} proxies on ports $((BASE_PORT+1))–$((BASE_PORT+COUNT))."
+echo "📡 Network: vpn_proxy_network - Other containers can connect to this network to use the proxies."
