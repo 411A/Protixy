@@ -9,8 +9,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY start.sh /usr/local/bin/start.sh
+COPY healthcheck.sh /usr/local/bin/healthcheck.sh
 COPY tinyproxy.conf.template /etc/tinyproxy/tinyproxy.conf.template
 
-RUN chmod +x /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh /usr/local/bin/healthcheck.sh
 
 ENTRYPOINT ["/usr/local/bin/start.sh"]

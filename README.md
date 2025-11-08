@@ -2,6 +2,15 @@
 
 # 🐳 OpenVPN Proxy Setup Guide (Docker + ProtonVPN + Tinyproxy)
 
+## 🌟 Features
+
+- ✅ **Self-Repairing**: Automatically recovers from connection failures
+- ✅ **Zero Manual Intervention**: No need to manually restart containers
+- ✅ **Health Monitoring**: Continuous VPN connection monitoring with auto-restart
+- ✅ **Smart Config Rotation**: Automatically tries different VPN servers until one works
+- ✅ **Docker Health Checks**: Built-in Docker healthcheck for container orchestration
+- ✅ **Production Ready**: Handles network instability, timeout issues, and reconnections
+
 ## 0. Prerequisites
 
 - Install **Docker** on your machine.
@@ -25,7 +34,13 @@ Password
 
 1. Move the project folder to your VPS.
 2. SSH into your VPS and `cd` into the project folder.
-3. Run the following command to generate and start 1 proxy container:
+3. **(Optional)** Fix OpenVPN warnings by patching the configs:
+
+```bash
+chmod +x fix-ovpn-warnings.sh && ./fix-ovpn-warnings.sh
+```
+
+4. Run the following command to generate and start 1 proxy container:
 
 ```bash
 chmod +x generate-compose.sh && ./generate-compose.sh 1 && sudo docker compose up -d --build
@@ -35,9 +50,50 @@ chmod +x generate-compose.sh && ./generate-compose.sh 1 && sudo docker compose u
 
 > ⚠️ ProtonVPN's Free plan allows only 1 connection.
 
-4. Check the OpenVPN connection and proxy status by viewing container logs:
+5. Check the OpenVPN connection and proxy status by viewing container logs:
 
 ```bash
+docker compose logs -f vpn_proxy_1
+```
+
+---
+
+## 🔄 Self-Repair Mechanism
+
+The container is now **fully autonomous** and will handle failures automatically:
+
+### Automatic Recovery Features:
+
+1. **Health Monitoring**: Checks VPN connection every 60 seconds
+   - Verifies `tun0` interface is up
+   - Confirms internet connectivity through VPN
+   - Tests proxy functionality
+
+2. **Auto-Restart on Failure**: 
+   - Detects connection drops (3 consecutive failures)
+   - Automatically restarts OpenVPN
+   - Tries different VPN servers from your configs
+
+3. **Retry Loop**:
+   - If all configs fail, waits 5 minutes and tries again
+   - Never gives up - keeps attempting to reconnect
+   - No manual intervention required
+
+4. **Docker Health Check**:
+   - Container marked as unhealthy if VPN fails
+   - Docker can automatically restart unhealthy containers
+   - Integrates with orchestration tools (Kubernetes, Swarm, etc.)
+
+### Monitor Container Health:
+
+```bash
+# Check health status
+docker compose ps
+
+# View detailed health check logs
+docker inspect vpn_proxy_1 --format='{{.State.Health.Status}}'
+
+# Watch real-time logs
 docker compose logs -f vpn_proxy_1
 ```
 
@@ -60,4 +116,76 @@ curl -s --proxy http://127.0.0.1:6101 https://ipinfo.io/json | jq -r '"IP: \(.ip
 
 ```bash
 python3 -c "import requests; info = requests.get('https://ipinfo.io/json', proxies={'http':'http://127.0.0.1:6101','https':'http://127.0.0.1:6101'}).json(); print(f\"IP: {info['ip']} 🔸 City: {info['city']} 🔸 Region: {info['region']} 🔸 Country: {info['country']} 🔸 TimeZone: {info['timezone']}\")"
+```
+
+---
+
+## 🛠️ Troubleshooting
+
+### Quick Diagnostic Tool
+
+Run the diagnostic script for a comprehensive health report:
+
+```bash
+chmod +x diagnose.sh && ./diagnose.sh
+```
+
+This will show:
+- Container status
+- Health check results  
+- Process status (OpenVPN & Tinyproxy)
+- Network interface details
+- Current VPN server
+- Proxy functionality test
+- Recent errors
+
+### Container keeps restarting?
+This is normal during initial connection attempts. The container will:
+1. Try all available VPN configs in random order
+2. Wait 5 minutes if all fail
+3. Try again indefinitely until successful
+
+### Connection seems slow?
+Check the logs to see which VPN server you're connected to:
+```bash
+docker compose logs vpn_proxy_1 | grep "Connection successful"
+```
+
+### Want to force a server change?
+Simply restart the container:
+```bash
+docker compose restart vpn_proxy_1
+```
+
+### Check if container is healthy:
+```bash
+docker compose exec vpn_proxy_1 /usr/local/bin/healthcheck.sh
+```
+
+---
+
+## 📊 Configuration Options
+
+You can customize the behavior by editing `start.sh`:
+
+- `VPN_CONNECT_TIMEOUT=20` - Seconds to wait for VPN connection
+- `HEALTH_CHECK_INTERVAL=60` - Seconds between health checks
+- `MAX_FAILURES=3` - Consecutive failures before restart
+- `RETRY_DELAY=300` - Seconds to wait after all configs fail
+
+---
+
+## 🔧 Advanced: Manual Config Patching
+
+If you want to permanently fix OpenVPN warnings in your config files:
+
+```bash
+./fix-ovpn-warnings.sh
+```
+
+This will add compatibility options to all `.ovpn` files. Backups are created automatically.
+
+To restore originals:
+```bash
+cd ovpn_configs && for f in *.ovpn.bak; do mv "$f" "${f%.bak}"; done
 ```

@@ -29,6 +29,12 @@ for i in $(seq 1 "$COUNT"); do
     ports:
       - "${port}:${port}"
     restart: unless-stopped
+    healthcheck:
+      test: ["/bin/bash", "/usr/local/bin/healthcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 EOF
 done

@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Quick diagnostic script for VPN Proxy containers
+
+echo "🔍 VPN Proxy Diagnostic Report"
+echo "=============================="
+echo ""
+
+# Check if docker-compose.yml exists
+if [ ! -f "docker-compose.yml" ]; then
+    echo "❌ No docker-compose.yml found. Run generate-compose.sh first."
+    exit 1
+fi
+
+# Get list of proxy containers
+containers=$(docker compose ps --services 2>/dev/null | grep vpn_proxy)
+
+if [ -z "$containers" ]; then
+    echo "❌ No proxy containers found. Start them with: docker compose up -d"
+    exit 1
+fi
+
+echo "📦 Container Status:"
+docker compose ps
+echo ""
+
+for container in $containers; do
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📊 Diagnostics for: $container"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Check if container is running
+    if ! docker compose ps | grep -q "$container.*running"; then
+        echo "❌ Container is not running"
+        echo ""
+        continue
+    fi
+    
+    # Health check status
+    echo "🏥 Health Status:"
+    health=$(docker inspect "$container" --format='{{.State.Health.Status}}' 2>/dev/null || echo "no healthcheck")
+    if [ "$health" = "healthy" ]; then
+        echo "   ✅ $health"
+    elif [ "$health" = "unhealthy" ]; then
+        echo "   ❌ $health"
+    else
+        echo "   ⚠️  $health"
+    fi
+    echo ""
+    
+    # Run internal health check
+    echo "🔬 Internal Health Check:"
+    docker compose exec -T "$container" /usr/local/bin/healthcheck.sh 2>&1 | sed 's/^/   /'
+    echo ""
+    
+    # Check processes
+    echo "⚙️  Running Processes:"
+    docker compose exec -T "$container" bash -c "pgrep -a openvpn | head -1" 2>/dev/null | sed 's/^/   OpenVPN: /'
+    docker compose exec -T "$container" bash -c "pgrep -a tinyproxy | head -1" 2>/dev/null | sed 's/^/   Tinyproxy: /'
+    echo ""
+    
+    # Check tun0 interface
+    echo "🌐 Network Interface (tun0):"
+    docker compose exec -T "$container" bash -c "ip addr show tun0 2>/dev/null | grep 'inet '" 2>/dev/null | sed 's/^/   /' || echo "   ❌ tun0 not found or no IP"
+    echo ""
+    
+    # Get current VPN server
+    echo "🌍 Connected VPN Server:"
+    server=$(docker compose logs "$container" 2>/dev/null | grep "Connection successful" | tail -1 | sed -n 's/.*with \(.*\)\.$/\1/p')
+    if [ -n "$server" ]; then
+        echo "   ✅ $server"
+    else
+        echo "   ⚠️  Not yet connected or log unavailable"
+    fi
+    echo ""
+    
+    # Get proxy port
+    echo "🔌 Proxy Port:"
+    port=$(docker compose exec -T "$container" bash -c 'echo $PROXY_PORT' 2>/dev/null | tr -d '\r')
+    if [ -n "$port" ]; then
+        echo "   Port: $port"
+        
+        # Test proxy
+        echo "   Testing proxy..."
+        if timeout 5 curl -s --proxy "http://127.0.0.1:$port" https://ipinfo.io/ip >/dev/null 2>&1; then
+            external_ip=$(timeout 5 curl -s --proxy "http://127.0.0.1:$port" https://ipinfo.io/ip 2>/dev/null)
+            echo "   ✅ Proxy working - External IP: $external_ip"
+        else
+            echo "   ❌ Proxy not responding"
+        fi
+    fi
+    echo ""
+    
+    # Recent log errors
+    echo "📋 Recent Errors (last 5):"
+    recent_errors=$(docker compose logs "$container" 2>/dev/null | grep -E "ERROR|FAIL|timeout|❌" | tail -5)
+    if [ -n "$recent_errors" ]; then
+        echo "$recent_errors" | sed 's/^/   /'
+    else
+        echo "   ✅ No recent errors"
+    fi
+    echo ""
+    
+done
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "💡 Quick Actions:"
+echo "   Restart all:     docker compose restart"
+echo "   View logs:       docker compose logs -f"
+echo "   Rebuild:         docker compose up -d --build"
+echo "   Force new VPN:   docker compose restart"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

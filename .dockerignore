@@ -1,0 +1,30 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+LICENSE
+SELF_REPAIR_IMPLEMENTATION.md
+*.md
+
+# Scripts not needed in container
+generate-compose.sh
+diagnose.sh
+fix-ovpn-warnings.sh
+
+# Docker files
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Backups
+*.bak
+*.backup
+*.old
+
+# Logs and temporary files
+*.log
+.DS_Store
+Thumbs.db
