@@ -50,6 +50,9 @@ persist-key
 persist-tun
 mute-replay-warnings
 verb 3
+# Fix cipher warnings
+data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
+data-ciphers-fallback AES-256-CBC
 EOF
 
         # Start OpenVPN in the background to test the connection
@@ -86,8 +89,6 @@ function monitor_vpn_health {
     sleep 30
     
     while true; do
-        sleep "$HEALTH_CHECK_INTERVAL"
-        
         # Check if tun0 exists and has an IP
         if ! ip link show tun0 &>/dev/null || ! ip addr show tun0 | grep -q "inet "; then
             consecutive_failures=$((consecutive_failures + 1))
@@ -109,8 +110,8 @@ function monitor_vpn_health {
                     return 1
                 fi
             else
-                # Test proxy functionality through localhost
-                if curl -s --max-time 10 --proxy "http://127.0.0.1:${PROXY_PORT}" https://ipinfo.io/ip >/dev/null 2>&1; then
+                # Check if Tinyproxy process is still running and listening
+                if pgrep -x tinyproxy >/dev/null && nc -z 127.0.0.1 "$PROXY_PORT" 2>/dev/null; then
                     if [ "$consecutive_failures" -gt 0 ]; then
                         echo "[monitor] ✅ Connection recovered" >&2
                     fi
@@ -127,6 +128,9 @@ function monitor_vpn_health {
                 fi
             fi
         fi
+        
+        # Wait before next check
+        sleep "$HEALTH_CHECK_INTERVAL"
     done
 }
 
@@ -173,6 +177,9 @@ persist-key
 persist-tun
 mute-replay-warnings
 verb 3
+# Fix cipher warnings
+data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
+data-ciphers-fallback AES-256-CBC
 EOF
 
     # Start health monitor in background
