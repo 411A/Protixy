@@ -1,19 +1,19 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/411A/Protixy)
 
-# 🐳 OpenVPN Proxy Setup Guide (Docker + ProtonVPN + Tinyproxy)
+# OpenVPN Proxy with Automatic VPN Leak Detection
 
-## 🌟 Features
+## Features
 
-- ✅ **Self-Repairing**: Automatically recovers from connection failures
-- ✅ **Zero Manual Intervention**: No need to manually restart containers
-- ✅ **Health Monitoring**: Continuous VPN connection monitoring with auto-restart
-- ✅ **Smart Config Rotation**: Automatically tries different VPN servers until one works
-- ✅ **Docker Health Checks**: Built-in Docker healthcheck for container orchestration
-- ✅ **Production Ready**: Handles network instability, timeout issues, and reconnections
+- **Multi-Container Support**: Monitor multiple VPN proxies independently
+- **Automatic VPN Leak Detection**: External monitor detects and fixes IP leaks per container
+- **Self-Repairing**: Automatically recovers from connection failures
+- **Zero Manual Intervention**: Fully autonomous operation
+- **Smart Config Rotation**: Tries different VPN servers until one works
+- **Individual Health Monitoring**: Only restarts affected containers, healthy ones keep running
 
-## 0. Prerequisites
+## Prerequisites
 
-- Install **Docker** on your machine.
+- Docker installed on your machine
 
 ## 1. Download ProtonVPN OpenVPN Configs
 
@@ -24,95 +24,92 @@
 
 ⚠️ The `jp-free-1.protonvpn.udp.ovpn` file included is a **sample placeholder** and will **not work** for actual connections. Replace it with a real `.ovpn` file from your ProtonVPN account.
 
-5. Inside the `ovpn_configs` directory, open the existing `proton_openvpn_userpass.txt` file and add your ProtonVPN login credentials, You can obtain your username and password from [ProtonVPN's account page](https://account.protonvpn.com/account-password#openvpn):
+5. Inside the `ovpn_configs` directory, open the existing `proton_openvpn_userpass.txt` file and add your ProtonVPN login credentials from [ProtonVPN's account page](https://account.protonvpn.com/account-password#openvpn):
 ```
 Username
 Password
 ```
 
-## 2. Deploy to VPS
+## 2. Deploy
 
-1. Move the project folder to your VPS.
-2. SSH into your VPS and `cd` into the project folder.
-3. **(Optional)** Fix OpenVPN warnings by patching the configs:
+1. SSH into your VPS and navigate to the project folder.
+2. Generate docker-compose.yml and start services:
 
 ```bash
-chmod +x fix-ovpn-warnings.sh && ./fix-ovpn-warnings.sh
+chmod +x generate-compose.sh && ./generate-compose.sh 1 && docker compose up -d --build
 ```
 
-4. Run the following command to generate and start 1 proxy container:
+> Change `1` to deploy multiple proxies (e.g., `3` creates ports 6101, 6102, 6103).
+> 
+> ⚠️ ProtonVPN Free plan allows only 1 connection.
+
+3. Monitor the logs:
 
 ```bash
-chmod +x generate-compose.sh && ./generate-compose.sh 1 && sudo docker compose up -d --build
-````
-
-> 📝 **Note:** If you want multiple proxies (e.g., 3), change `1` to `3`. Proxies will start on ports `6101`, `6102`, `6103`, etc.
-
-> ⚠️ ProtonVPN's Free plan allows only 1 connection.
-
-5. Check the OpenVPN connection and proxy status by viewing container logs:
-
-```bash
+# VPN container logs
 docker compose logs -f vpn_proxy_1
+
+# Leak monitor logs
+docker logs -f vpn_proxy_leak_monitor
 ```
 
 ---
 
-## 🔄 Self-Repair Mechanism
+## VPN Leak Detection
 
-The container is now **fully autonomous** and will handle failures automatically:
+A separate monitor container checks **ALL** VPN proxy containers for IP leaks:
 
-### Automatic Recovery Features:
+- **Every 5 minutes**: Tests each proxy container individually
+- **Smart Restart**: Only restarts the affected container if leak detected
+- **Healthy Containers**: Keep running unaffected during restarts
 
-1. **Health Monitoring**: Checks VPN connection every 60 seconds
-   - Verifies `tun0` interface is up
-   - Confirms internet connectivity through VPN
-   - Tests proxy functionality
-
-2. **Auto-Restart on Failure**: 
-   - Detects connection drops (3 consecutive failures)
-   - Automatically restarts OpenVPN
-   - Tries different VPN servers from your configs
-
-3. **Retry Loop**:
-   - If all configs fail, waits 5 minutes and tries again
-   - Never gives up - keeps attempting to reconnect
-   - No manual intervention required
-
-4. **Docker Health Check**:
-   - Container marked as unhealthy if VPN fails
-   - Docker can automatically restart unhealthy containers
-   - Integrates with orchestration tools (Kubernetes, Swarm, etc.)
-
-### Monitor Container Health:
+When you deploy 3 proxies with `./generate-compose.sh 3`, the monitor checks each one independently:
 
 ```bash
-# Check health status
-docker compose ps
-
-# View detailed health check logs
-docker inspect vpn_proxy_1 --format='{{.State.Health.Status}}'
-
-# Watch real-time logs
-docker compose logs -f vpn_proxy_1
+[monitor] Checking 3 container(s)...
+[monitor] Checking vpn_proxy_1 (port 6101)...
+[monitor]   OK vpn_proxy_1 is working correctly (Country: US)
+[monitor] Checking vpn_proxy_2 (port 6102)...
+[monitor]   LEAK DETECTED in vpn_proxy_2! Country is FI
+[monitor]   Restarting: vpn_proxy_2
+[monitor] Checking vpn_proxy_3 (port 6103)...
+[monitor]   OK vpn_proxy_3 is working correctly (Country: JP)
 ```
 
 ---
 
-## 🌐 Using VPN Proxies from Other Docker Containers
+## Project Structure
 
-**Note:** The proxy is always accessible from the host at `http://127.0.0.1:6101`. The Docker network is an **optional** feature for container-to-container communication.
+```
+.
+├── Dockerfile                      # Container image definition
+├── docker-compose.yml              # Auto-generated by generate-compose.sh
+├── start.sh                        # Main container entrypoint (VPN + Tinyproxy)
+├── monitor.sh                      # External leak detector (separate container)
+├── healthcheck.sh                  # Docker health check (process monitoring)
+├── generate-compose.sh             # Deployment tool (auto-detects host country)
+├── diagnose.sh                     # Troubleshooting utility
+├── fix-ovpn-warnings.sh            # Optional: Patches OpenVPN config warnings
+├── tinyproxy.conf.template         # Tinyproxy configuration template
+└── ovpn_configs/                   # Your ProtonVPN .ovpn files
+    ├── *.ovpn                      # OpenVPN configuration files
+    └── proton_openvpn_userpass.txt # Your ProtonVPN credentials
+```
 
-The proxies are on a Docker network called `vpn_proxy_network`. Other containers can connect to use them by service name instead of localhost.
+---
 
-### Connect Existing Container
+## Using VPN Proxies from Other Docker Containers
+
+The proxy is accessible from the host at `http://127.0.0.1:6101`.
+
+For container-to-container communication, connect to the `vpn_proxy_network`:
 
 ```bash
 docker network connect vpn_proxy_network your_container
 # Then use: http://vpn_proxy_1:6101 as proxy
 ```
 
-### Use in Docker Compose
+Or in Docker Compose:
 
 ```yaml
 services:
@@ -129,95 +126,93 @@ networks:
     external: true
 ```
 
-### Network Container Mode (transparent routing)
+---
+
+## Test Your Proxy
 
 ```bash
-docker run --net=container:vpn_proxy_1 your-image
-# All traffic automatically goes through VPN
+# Simple test
+curl -s --proxy http://127.0.0.1:6101 https://ipinfo.io/json | jq -r '"IP: \(.ip) | Country: \(.country)"'
+
+# Python test
+python3 -c "import requests; info = requests.get('https://ipinfo.io/json', proxies={'http':'http://127.0.0.1:6101','https':'http://127.0.0.1:6101'}).json(); print(f\"IP: {info['ip']} | Country: {info['country']}\")"
 ```
 
 ---
 
-## ✅ Test Your Proxy
-
-### From Host Machine (or any external application)
-
-The proxy is accessible at `http://127.0.0.1:6101` - no Docker network needed!
-
-### 🔹 With `curl` (requires `jq`):
-
-📝 Make sure the `jq` is installed.
-```bash
-sudo apt install jq -y
-```
-
-```bash
-curl -s --proxy http://127.0.0.1:6101 https://ipinfo.io/json | jq -r '"IP: \(.ip) 🔸 City: \(.city) 🔸 Region: \(.region) 🔸 Country: \(.country) 🔸 TimeZone: \(.timezone)"'
-```
-
-### 🔹 With Python:
-
-```bash
-python3 -c "import requests; info = requests.get('https://ipinfo.io/json', proxies={'http':'http://127.0.0.1:6101','https':'http://127.0.0.1:6101'}).json(); print(f\"IP: {info['ip']} 🔸 City: {info['city']} 🔸 Region: {info['region']} 🔸 Country: {info['country']} 🔸 TimeZone: {info['timezone']}\")"
-```
-
----
-
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 ### Quick Diagnostic
-
 ```bash
 chmod +x diagnose.sh && ./diagnose.sh
 ```
 
-### Container keeps restarting?
-This is normal during initial connection attempts. The container will:
-1. Try all available VPN configs in random order
-2. Wait 5 minutes if all fail
+### Container restarting?
+Normal during initial connection. The system will:
+1. Try all VPN configs in random order  
+2. Wait 5 minutes if all configs fail
 3. Try again indefinitely until successful
 
-### Connection seems slow?
-Check the logs to see which VPN server you're connected to:
+### Check leak monitor (all containers):
 ```bash
-docker compose logs vpn_proxy_1 | grep "Connection successful"
+docker logs -f vpn_proxy_leak_monitor
 ```
 
-### Want to force a server change?
-Simply restart the container:
+### Force server change:
 ```bash
+# Restart specific proxy
 docker compose restart vpn_proxy_1
+
+# Restart all proxies
+docker compose restart
 ```
 
-### Check if container is healthy:
+### View connection details:
 ```bash
+# Specific container
+docker compose logs vpn_proxy_1 | grep "Connection successful"
+
+# All containers
+docker compose logs | grep "Connection successful"
+```
+
+### Check container health:
+```bash
+# Overview of all services
+docker compose ps
+
+# Specific container health check
 docker compose exec vpn_proxy_1 /usr/local/bin/healthcheck.sh
 ```
 
----
-
-## 📊 Configuration Options
-
-You can customize the behavior by editing `start.sh`:
-
-- `VPN_CONNECT_TIMEOUT=20` - Seconds to wait for VPN connection
-- `HEALTH_CHECK_INTERVAL=60` - Seconds between health checks
-- `MAX_FAILURES=3` - Consecutive failures before restart
-- `RETRY_DELAY=300` - Seconds to wait after all configs fail
+### Test multiple proxies individually:
+```bash
+curl -s --proxy http://127.0.0.1:6101 https://ipinfo.io/country  # vpn_proxy_1
+curl -s --proxy http://127.0.0.1:6102 https://ipinfo.io/country  # vpn_proxy_2
+curl -s --proxy http://127.0.0.1:6103 https://ipinfo.io/country  # vpn_proxy_3
+```
 
 ---
 
-## 🔧 Advanced: Manual Config Patching
+## Advanced Configuration
 
-If you want to permanently fix OpenVPN warnings in your config files:
+### Environment Variables
 
+**Monitor Container:**
+- `HOST_COUNTRY`: Auto-detected by generate-compose.sh
+- `CHECK_INTERVAL`: Seconds between checks (default: 300)
+- `CONTAINER_PREFIX`: Container name prefix (default: vpn_proxy_)
+
+**VPN Containers:**
+- `PROXY_PORT`: Tinyproxy listen port (auto: 6101, 6102, 6103...)
+- `HOST_COUNTRY`: Host country code for leak detection
+
+### Startup Script Variables (start.sh):
+- `VPN_CONNECT_TIMEOUT=20`: Seconds to wait for VPN connection
+- `RETRY_DELAY=300`: Seconds to wait after all configs fail
+
+### Manual Config Patching:
 ```bash
 ./fix-ovpn-warnings.sh
 ```
-
-This will add compatibility options to all `.ovpn` files. Backups are created automatically.
-
-To restore originals:
-```bash
-cd ovpn_configs && for f in *.ovpn.bak; do mv "$f" "${f%.bak}"; done
-```
+This adds compatibility options to all `.ovpn` files. Backups are created automatically.

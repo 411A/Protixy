@@ -9,14 +9,42 @@ fi
 COUNT=$1
 BASE_PORT=6100
 
+# Detect host country to pass to containers
+echo "🌍 Detecting host location..."
+HOST_COUNTRY=$(timeout 10 curl -s https://ipinfo.io/country 2>/dev/null || echo "UNKNOWN")
+if [ "$HOST_COUNTRY" = "UNKNOWN" ]; then
+  echo "⚠️  Warning: Could not detect host country. VPN leak detection will be disabled."
+else
+  echo "📍 Host country detected: $HOST_COUNTRY"
+fi
+
 cat > docker-compose.yml <<EOF
 services:
+  monitor:
+    image: docker:cli
+    container_name: vpn_proxy_leak_monitor
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./monitor.sh:/monitor.sh
+    environment:
+      - HOST_COUNTRY=${HOST_COUNTRY}
+      - CHECK_INTERVAL=300
+      - CONTAINER_PREFIX=vpn_proxy_
+    entrypoint: /bin/sh
+    command: -c "apk add --no-cache bash curl jq && bash /monitor.sh"
+    networks:
+      - vpn_proxy_network
+    restart: unless-stopped
+    depends_on:
+      - vpn_proxy_1
+
 EOF
 
 for i in $(seq 1 "$COUNT"); do
   port=$((BASE_PORT + i))
   cat >> docker-compose.yml <<EOF
   vpn_proxy_${i}:
+    container_name: vpn_proxy_${i}
     build: .
     cap_add:
       - NET_ADMIN
@@ -26,6 +54,7 @@ for i in $(seq 1 "$COUNT"); do
       - ./ovpn_configs:/etc/openvpn:ro
     environment:
       - PROXY_PORT=${port}
+      - HOST_COUNTRY=${HOST_COUNTRY}
     ports:
       - "${port}:${port}"
     networks:

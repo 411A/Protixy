@@ -7,14 +7,17 @@ OVPN_DIR="/etc/openvpn"
 CREDS_FILE="$OVPN_DIR/proton_openvpn_userpass.txt"
 TINYPROXY_CONF_TEMPLATE="/etc/tinyproxy/tinyproxy.conf.template"
 TINYPROXY_CONF="/etc/tinyproxy/tinyproxy.conf"
-# Seconds to wait for tun0 interface
 VPN_CONNECT_TIMEOUT=20
-# Health check interval (seconds)
-HEALTH_CHECK_INTERVAL=60
-# Max consecutive failures before restart
-MAX_FAILURES=3
-# Retry delay on complete failure (seconds)
 RETRY_DELAY=300
+
+# Use HOST_COUNTRY from environment variable (set by docker-compose)
+# If not set, try to detect it (fallback)
+if [ -z "$HOST_COUNTRY" ]; then
+    echo "[init] 🌍 Detecting host location..." >&2
+    sleep 10
+    HOST_COUNTRY=$(timeout 10 curl -s https://ipinfo.io/country 2>/dev/null || echo "UNKNOWN")
+fi
+echo "[init] 📍 Host country: $HOST_COUNTRY" >&2
 
 # --- Cleanup ---
 function cleanup {
@@ -80,60 +83,6 @@ EOF
     return 1
 }
 
-# --- Health monitoring function ---
-function monitor_vpn_health {
-    local consecutive_failures=0
-    
-    # Give VPN time to fully establish routing before first check
-    echo "[monitor] ⏳ Waiting 30 seconds for VPN to fully stabilize..." >&2
-    sleep 30
-    
-    while true; do
-        # Check if tun0 exists and has an IP
-        if ! ip link show tun0 &>/dev/null || ! ip addr show tun0 | grep -q "inet "; then
-            consecutive_failures=$((consecutive_failures + 1))
-            echo "[monitor] ⚠️  VPN interface issue detected (failure $consecutive_failures/$MAX_FAILURES)" >&2
-            
-            if [ "$consecutive_failures" -ge "$MAX_FAILURES" ]; then
-                echo "[monitor] 🔄 Max failures reached. Triggering restart..." >&2
-                killall openvpn 2>/dev/null || true
-                return 1
-            fi
-        else
-            # Check if OpenVPN process is still running
-            if ! pgrep -x openvpn >/dev/null; then
-                consecutive_failures=$((consecutive_failures + 1))
-                echo "[monitor] ⚠️  OpenVPN process died (failure $consecutive_failures/$MAX_FAILURES)" >&2
-                
-                if [ "$consecutive_failures" -ge "$MAX_FAILURES" ]; then
-                    echo "[monitor] 🔄 Max failures reached. Triggering restart..." >&2
-                    return 1
-                fi
-            else
-                # Check if Tinyproxy process is still running and listening
-                if pgrep -x tinyproxy >/dev/null && nc -z 127.0.0.1 "$PROXY_PORT" 2>/dev/null; then
-                    if [ "$consecutive_failures" -gt 0 ]; then
-                        echo "[monitor] ✅ Connection recovered" >&2
-                    fi
-                    consecutive_failures=0
-                else
-                    consecutive_failures=$((consecutive_failures + 1))
-                    echo "[monitor] ⚠️  Proxy not responding (failure $consecutive_failures/$MAX_FAILURES)" >&2
-                    
-                    if [ "$consecutive_failures" -ge "$MAX_FAILURES" ]; then
-                        echo "[monitor] 🔄 Max failures reached. Triggering restart..." >&2
-                        killall openvpn 2>/dev/null || true
-                        return 1
-                    fi
-                fi
-            fi
-        fi
-        
-        # Wait before next check
-        sleep "$HEALTH_CHECK_INTERVAL"
-    done
-}
-
 # --- Main Execution ---
 echo "[main] 🚀 Starting VPN-Proxy container..." >&2
 
@@ -182,17 +131,12 @@ data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
 data-ciphers-fallback AES-256-CBC
 EOF
 
-    # Start health monitor in background
-    monitor_vpn_health &
-    MONITOR_PID=$!
-    
-    # Run OpenVPN in foreground (but allow it to be interrupted)
+    # Run OpenVPN in foreground. It will be supervised by the main loop.
     openvpn --config "$TEMP_CONFIG_FINAL" --auth-user-pass "$CREDS_FILE" \
             --auth-nocache 2>&1 | grep -v "is group or others accessible" || true
     
     # If we reach here, OpenVPN exited
     echo "[main] ⚠️  OpenVPN exited unexpectedly. Cleaning up..." >&2
-    kill "$MONITOR_PID" 2>/dev/null || true
     killall openvpn 2>/dev/null || true
     
     # Wait a bit before restarting
