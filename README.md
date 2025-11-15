@@ -2,6 +2,12 @@
 
 # OpenVPN Proxy with Automatic VPN Leak Detection
 
+❓ Ever wanted to use a different IP for your apps on your VPS?<br>
+❓ Bought a Germany VPS but need a USA IP to connect to your favorite free LLM API?<br>
+✨ This project is for you!
+<br>
+💡 It allows you to use any country's IP through ProtonVPN's OpenVPN configs and use it as a proxy so that your app requests go through it without exposing your real VPS IP.
+
 ## Features
 
 - **Multi-Container Support**: Monitor multiple VPN proxies independently
