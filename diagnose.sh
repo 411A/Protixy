@@ -93,10 +93,19 @@ for container in $containers; do
     if [ -n "$port" ]; then
         echo "   Port: $port"
         
-        # Test proxy
+        # Test proxy using alternative services
         echo "   Testing proxy..."
-        if timeout 5 curl -s --proxy "http://127.0.0.1:$port" https://ipinfo.io/ip >/dev/null 2>&1; then
-            external_ip=$(timeout 5 curl -s --proxy "http://127.0.0.1:$port" https://ipinfo.io/ip 2>/dev/null)
+        services=("https://api.ipify.org" "https://checkip.amazonaws.com" "https://icanhazip.com")
+        external_ip=""
+        
+        for service in "${services[@]}"; do
+            if timeout 5 curl -s --proxy "http://127.0.0.1:$port" "$service" >/dev/null 2>&1; then
+                external_ip=$(timeout 5 curl -s --proxy "http://127.0.0.1:$port" "$service" 2>/dev/null | tr -d '\n\r')
+                break
+            fi
+        done
+        
+        if [ -n "$external_ip" ]; then
             echo "   ✅ Proxy working - External IP: $external_ip"
         else
             echo "   ❌ Proxy not responding"

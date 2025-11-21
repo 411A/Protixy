@@ -164,6 +164,14 @@ Normal during initial connection. The system will:
 docker logs -f vpn_proxy_leak_monitor
 ```
 
+### Rate Limiting Issues:
+If you see "Rate limit exceeded" errors in the monitor logs, the system now uses multiple free IP detection services. To get more reliable monitoring:
+
+1. **Increase check interval** (edit `CHECK_INTERVAL` in docker-compose.yml to 1800 for 30-minute checks)
+2. **Optional: Get IPinfo.io API token** for 50k requests/month:
+   - Sign up at https://ipinfo.io/signup
+   - Add your token to docker-compose.yml: `IPINFO_TOKEN=your_token_here`
+
 ### Force server change:
 ```bash
 # Restart specific proxy
@@ -206,8 +214,9 @@ curl -s --proxy http://127.0.0.1:6103 https://ipinfo.io/country  # vpn_proxy_3
 
 **Monitor Container:**
 - `HOST_COUNTRY`: Auto-detected by generate-compose.sh
-- `CHECK_INTERVAL`: Seconds between checks (default: 300)
+- `CHECK_INTERVAL`: Seconds between checks (default: 900, was 300)
 - `CONTAINER_PREFIX`: Container name prefix (default: vpn_proxy_)
+- `IPINFO_TOKEN`: Optional IPinfo.io API token for higher rate limits
 
 **VPN Containers:**
 - `PROXY_PORT`: Tinyproxy listen port (auto: 6101, 6102, 6103...)

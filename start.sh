@@ -15,7 +15,28 @@ RETRY_DELAY=300
 if [ -z "$HOST_COUNTRY" ]; then
     echo "[init] 🌍 Detecting host location..." >&2
     sleep 10
-    HOST_COUNTRY=$(timeout 10 curl -s https://ipinfo.io/country 2>/dev/null || echo "UNKNOWN")
+    
+    # Try multiple IP detection services
+    vpn_ip=""
+    services=(
+        "https://api.ipify.org"
+        "https://checkip.amazonaws.com" 
+        "https://icanhazip.com"
+    )
+
+    for service in "${services[@]}"; do
+        vpn_ip=$(timeout 10 curl -s "$service" 2>/dev/null | tr -d '\n\r' | head -c15)
+        if [[ -n "$vpn_ip" && "$vpn_ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+            break
+        fi
+        vpn_ip=""
+    done
+
+    # Get country from IP using free geolocation services
+    HOST_COUNTRY="UNKNOWN"
+    if [[ -n "$vpn_ip" ]]; then
+        HOST_COUNTRY=$(timeout 10 curl -s "http://ip-api.com/json/${vpn_ip}?fields=countryCode" 2>/dev/null | grep -o '"countryCode":"[A-Z]*"' | cut -d'"' -f4 || echo "UNKNOWN")
+    fi
 fi
 echo "[init] 📍 Host country: $HOST_COUNTRY" >&2
 
