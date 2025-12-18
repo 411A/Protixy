@@ -231,3 +231,68 @@ curl -s --proxy http://127.0.0.1:6103 https://ipinfo.io/country  # vpn_proxy_3
 ./fix-ovpn-warnings.sh
 ```
 This adds compatibility options to all `.ovpn` files. Backups are created automatically.
+
+## Next Steps
+
+- [ ] **Convert OpenVPN credentials to JSON for multi-account support**
+
+Convert `ovpn_configs/proton_openvpn_userpass.txt` into a structured `.json` file so multiple free ProtonVPN accounts can be managed and rotated programmatically.
+
+*Example: `proton_openvpn_accounts.json`*
+```json
+[
+  {
+    "username": "account1@example.com",
+    "password": "password1"
+  },
+  {
+    "username": "account2@example.com",
+    "password": "password2"
+  }
+]
+````
+
+*Why this helps*
+
+* Enables easy rotation between accounts
+* Simplifies automation and parsing
+* Scales cleanly as more accounts are added
+
+---
+
+- [ ] **Unified health-checked proxy endpoint (multi-container)**
+
+Create a single proxy container that acts as a unified entry point for multiple proxy containers.
+This container should continuously monitor the health of all underlying proxies and always route traffic to the latest working one.
+
+*Expected behavior*
+
+* Periodic health checks (latency, connectivity, or test requests)
+* Automatic failover when a proxy becomes unavailable
+* Zero manual intervention when proxies go down
+* Stable endpoint for all clients
+
+*High-level flow*
+
+```text
+Client
+  ↓
+Unified Proxy Container
+  ↓
+[ Proxy A | Proxy B | Proxy C ]
+   ↑        ↑        ↑
+ Health checks + automatic selection
+```
+
+*Benefits*
+
+* High availability
+* Clean architecture
+* No client-side proxy switching logic required
+
+---
+
+- [ ] **Reorganize internal scripts**
+
+Move all non-user-facing scripts into the `scripts/` directory.
+These scripts should only be invoked by the main entrypoint and must not be called directly by the user.
